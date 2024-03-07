@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 import os
 from dotenv import load_dotenv
 import mysql.connector as conn
-
+import time
 # Load environment file
 load_dotenv()
 
@@ -11,12 +11,20 @@ app = FastAPI()
 server_id = os.getenv("SERVER_ID","Server0")
 
 # Connect to MySQL
-mysql_conn = conn.connect(
-    host=os.getenv("MYSQL_HOST"),
-    user=os.getenv("MYSQL_USER", "bhanu"),
-    password=os.getenv("MYSQL_PASSWORD", "bhanu@1489"),
-    database=os.getenv("MYSQL_DATABASE", "StudentDB"),
-)
+
+while True:
+    try:
+        mysql_conn = conn.connect(
+            host=os.getenv("MYSQL_HOST"),
+            user=os.getenv("MYSQL_USER", "bhanu"),
+            password=os.getenv("MYSQL_PASSWORD", "bhanu@1489"),
+            database=os.getenv("MYSQL_DATABASE", "StudentDB"),
+        )
+        break
+    
+    except Exception as e:
+        time.sleep(0.02)
+
 
 mysql_cursor = mysql_conn.cursor()
 student_schema = {"columns": ["Stud_id", "Stud_name", "Stud_marks"],
