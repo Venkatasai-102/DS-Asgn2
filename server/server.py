@@ -2,63 +2,41 @@ from fastapi import FastAPI, Request, HTTPException
 import os
 from dotenv import load_dotenv
 import mysql.connector as conn
-import time
 
 # Load environment file
 load_dotenv()
 
 app = FastAPI()
 
-server_id = os.getenv("SERVER_ID","Server0")
+server_id = os.getenv("SERVER_ID")
 
 # Connect to MySQL
-
-while True:
-    try:
-        mysql_conn = conn.connect(
-            host=os.getenv("MYSQL_HOST"),
-            user=os.getenv("MYSQL_USER", "root"),
-            password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
-            database=os.getenv("MYSQL_DATABASE", "StudentDB"),
-        )
-        break
-    
-    except Exception as e:
-        time.sleep(0.02)
-
+mysql_conn = conn.connect(
+    host=os.getenv("MYSQL_HOST"),
+    user=os.getenv("MYSQL_USER"),
+    password=os.getenv("MYSQL_PASSWORD"),
+    database=os.getenv("MYSQL_DATABASE"),
+    port=os.getenv("MYSQL_PORT")
+)
 
 mysql_cursor = mysql_conn.cursor()
-student_schema = {"columns": ["Stud_id", "Stud_name", "Stud_marks"],
-                  "dtypes": ["Number", "String", "String"]}
-
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    # Close MySQL cursor and connection
-    print("cleaning up the resources")
-    mysql_cursor.close()
-    mysql_conn.close()
-
 
 @app.get("/heartbeat")
 async def heartbeat():
     return ""
 
 # Initialzes the shards
-
-
 @app.post("/config")
 async def initialize_shards(request: Request):
     try:
         req = await request.json()
-        # schema is a dictionary with columns as stud_id, stud_name, stud_marks and
+        # schema is a dictionary with columns as stud_id, stud_name, stud_marks and 
         # dtypes as number, string, string
         schema = req["schema"]
+
         # shards is a list of shard names
         shards = req["shards"]
-        global student_schema
-        student_schema = schema
+
         message = ""
 
         # Create a table for each shard
@@ -68,13 +46,12 @@ async def initialize_shards(request: Request):
             CREATE TABLE IF NOT EXISTS {shard} (
                 {schema["columns"][0]} INT PRIMARY KEY,
                 {schema["columns"][1]} VARCHAR(255),
-                {schema["columns"][2]} INT
+                {schema["columns"][2]} VARCHAR(4)
             )
             """
-            print(create_table_query)
+
             # Insert schema
             mysql_cursor.execute(create_table_query)
-
             if i == 0:
                 message += f"{server_id}:{shard}"
             else:
@@ -87,15 +64,13 @@ async def initialize_shards(request: Request):
         return {"message": message, "status": "success"}
 
     except conn.Error as err:
-        # In case of an error, rollback changes and raise an exception
+         # In case of an error, rollback changes and raise an exception
         mysql_conn.rollback()
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {err}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
+    
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
-
-
+    
 @app.get("/copy")
 async def get_all_shards_data(request: Request):
     try:
@@ -106,24 +81,19 @@ async def get_all_shards_data(request: Request):
         response = {}
         for shard in shards:
             mysql_cursor.execute(f"SELECT * FROM {shard}")
-            rows = mysql_cursor.fetchall()
-            response[shard] = [
-                {col: value for col, value in zip(
-                    student_schema["columns"], row)}
-                for row in rows
-            ]
+            response[shard] = mysql_cursor.fetchall()
+
         response["status"] = "success"
+        
         return response
 
     except conn.Error as err:
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {err}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
+    
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
 
-
-@app.post("/read")
+@app.get("/read")
 async def get_students_data(request: Request):
     try:
         req = await request.json()
@@ -133,22 +103,19 @@ async def get_students_data(request: Request):
         high = id_range["high"]
 
         # Get data from the shard
-        mysql_cursor.execute(
-            f"SELECT * FROM {shard} WHERE Stud_id >= {low} AND Stud_id <= {high}")
+        mysql_cursor.execute(f"SELECT * FROM {shard} WHERE Stud_id >= {low} AND Stud_id <= {high}")
         response = {}
         response["data"] = mysql_cursor.fetchall()
 
         response["status"] = "success"
 
         return response
-
+    
     except conn.Error as err:
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {err}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
+    
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
-
 
 @app.post("/write")
 async def add_students_data(request: Request):
@@ -160,8 +127,7 @@ async def add_students_data(request: Request):
 
         # Add data to the shard
         for row in data:
-            mysql_cursor.execute(
-                f"INSERT INTO {shard} VALUES ({row['Stud_id']}, '{row['Stud_name']}', '{row['Stud_marks']}')")
+            mysql_cursor.execute(f"INSERT INTO {shard} VALUES ({row['Stud_id']}, '{row['Stud_name']}', '{row['Stud_marks']}')")
 
         # Commit changes
         mysql_conn.commit()
@@ -172,7 +138,7 @@ async def add_students_data(request: Request):
         response = {
             "message": "Data entries added",
             "current_idx": curr_idx,
-            "status": "success"
+            "status" : "success"
         }
 
         return response
@@ -180,12 +146,10 @@ async def add_students_data(request: Request):
     except conn.Error as err:
         # In case of an error, rollback changes and raise an exception
         mysql_conn.rollback()
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {err}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
+    
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
-
 
 @app.put("/update")
 async def update_student_data(request: Request):
@@ -193,32 +157,29 @@ async def update_student_data(request: Request):
         req = await request.json()
         shard = req["shard"]
         stud_id = req["Stud_id"]
-        data: dict = req["data"]
+        data = req["data"]
         stud_name = data["Stud_name"]
         stud_marks = data["Stud_marks"]
 
         # Update the data
-        mysql_cursor.execute(
-            f"UPDATE {shard} SET Stud_name = '{stud_name}', Stud_marks = '{stud_marks}' WHERE Stud_id = {stud_id}")
+        mysql_cursor.execute(f"UPDATE {shard} SET Stud_name = '{stud_name}', Stud_marks = '{stud_marks}' WHERE Stud_id = {stud_id}")
 
         # Commit changes
         mysql_conn.commit()
 
         response = {
             "message": f"Data entry for Stud_id:{stud_id} updated",
-            "status": "success"
+            "status" : "success"
         }
 
         return response
     except conn.Error as err:
         # In case of an error, rollback changes and raise an exception
         mysql_conn.rollback()
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {err}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
+    
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
-
 
 @app.delete("/del")
 async def delete_student_data(request: Request):
@@ -235,17 +196,16 @@ async def delete_student_data(request: Request):
 
         response = {
             "message": f"Data entry for Stud_id:{stud_id} removed",
-            "status": "success"
+            "status" : "success"
         }
 
         return response
-
+    
     except conn.Error as err:
         # In case of an error, rollback changes and raise an exception
         mysql_conn.rollback()
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred: {err}")
-
+        raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
+    
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
 
