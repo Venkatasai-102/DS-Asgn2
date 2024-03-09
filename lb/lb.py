@@ -2,8 +2,26 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse,RedirectResponse
 import subprocess
 from random import randint
-
+import mysql.connector as conn
+import os
+import time
 from consistent_hashing import ConsistentHashing
+import requests
+
+while True:
+    try:
+        mysql_conn = conn.connect(
+            host=os.getenv("MYSQL_HOST"),
+            user=os.getenv("MYSQL_USER", "root"),
+            password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
+            database=os.getenv("MYSQL_DATABASE", "StudentDB"),
+        )
+        break
+    
+    except Exception as e:
+        time.sleep(0.02)
+
+mysql_cursor = mysql_conn.cursor()
 
 
 app = FastAPI()
@@ -14,9 +32,9 @@ NUM_SLOTS = 512
 VIR_SERVERS = 9
 
 
+# maps for storing locally for loadbalancer
 app.hash_dict = {}
 app.server_list = {}
-
 
 
 def create_server(server_name):
@@ -36,7 +54,7 @@ def create_server(server_name):
         ip = subprocess.run(
             ipcommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
         ipaddr = ip.stdout.strip()        
-        return {'status': 'success', 'ip': ipaddr, 'name': server_name }
+        return {'status': 'success', 'ipaddr': ipaddr, 'name': server_name }
     
     else:
         return {'status': 'failure',
@@ -53,9 +71,6 @@ def create_server(server_name):
             )
         }
 
-        
-
-
 @app.post("/init")
 async def init_system(request: Request):
     req = await request.json()
@@ -71,18 +86,42 @@ async def init_system(request: Request):
             }
         )
         
-    # need to store the shards map with server in database
-    # need to create ShardT schema in database
-    
-    shard_names = []
-    for shard in shards:
-        shard_names.append(shard['Shard_id'])
+    # To store the shards map with server in database
+    # MapT Schema
+    create_mapt_query = f"""
+    CREATE TABLE IF NOT EXISTS MapT (
+        Shard_id VARCHAR(255),
+        Server_id VARCHAR(255)
+    )
+    """
+    mysql_cursor.execute(create_mapt_query)
+    mysql_conn.commit()
+
+    # To create ShardT schema in database
+    create_shardt_query = f"""
+    CREATE TABLE IF NOT EXISTS ShardT (
+        Stud_id_low INT PRIMARY KEY,
+        Shard_id VARCHAR(255),
+        Shard_size INT,
+        valid_idx INT
+    )
+    """
+    mysql_cursor.execute(create_shardt_query)
+    mysql_conn.commit()
     
     for server_name in servers:
         result = create_server(server_name)
-        
         if result['status'] == 'failure':
             return result['response']
+
+        # need to change to the network name currently put as localhost for testing
+        url = f"http://{result['ipaddr']}:{8080}/config"
+        data = {
+            "schema": schema,
+            "shards": [sh["Shard_id"] for sh in shards]
+        }
+
+        requests.post(url, data)
             
         # on success
         app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
@@ -91,14 +130,41 @@ async def init_system(request: Request):
                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8080)
-                
-        
-        
-        
-        
-    
-    
-    
-    
-    
+            
+            ## add shard-server mapping to database
+            add_mapt_query = f"""
+            INSERT INTO MapT VALUES ({sh}, {server_name})
+            """
+            mysql_cursor.execute(add_mapt_query)
+            mysql_conn.commit()
 
+    # creating all shard entries in ShardT
+    for shard in shards:
+        shard_query = f"INSERT INTO ShardT VALUES ({shard["Stud_id_low"]}, {shard["Shard_id"]}, {shard["Shard_size"]}, {shard["Stud_id_low"]})"
+        mysql_cursor.execute(shard_query)
+        mysql_conn.commit()
+
+        
+# @app.post("/add")
+# async def add_servers(request: Request):
+#     req = await request.json()
+#     n = req['N']
+#     new_shards, servers = req['shards'], req['servers']
+
+#     shard_names = []
+#     for shard in new_shards:
+#         shard_names.append(shard['Shard_id'])
+    
+#     for server_name in servers:
+#         result = create_server(server_name)
+        
+#         if result['status'] == 'failure':
+#             return result['response']
+            
+#         # on success
+#         app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
+#         for sh in servers[server_name]:
+#             if sh not in app.hash_dict:
+#                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
+            
+#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8080)
