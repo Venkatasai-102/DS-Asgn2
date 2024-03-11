@@ -12,7 +12,7 @@ while True:
     try:
         mysql_conn = conn.connect(
             host=os.getenv("MYSQL_HOST"),
-            user=os.getenv("MYSQL_USER", "root"),
+            user=os.getenv("MYSQL_USER", "user"),
             password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
             database=os.getenv("MYSQL_DATABASE", "StudentDB"),
         )
@@ -62,8 +62,8 @@ def create_server(server_name):
             status_code=500,
             content={
                 "message": {
-                    "N": len(list(app.serverList.keys())),
-                    "replicas": list(app.serverList.keys()),
+                    "N": len(list(app.server_list.keys())),
+                    "replicas": list(app.server_list.keys()),
                     "error": f"failed to create server: {server_name}"
                 },
                 "status": "failure"
@@ -129,7 +129,7 @@ async def init_system(request: Request):
             if sh not in app.hash_dict:
                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
-            app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8080)
+            app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
             
             ## add shard-server mapping to database
             add_mapt_query = f"""
@@ -140,7 +140,7 @@ async def init_system(request: Request):
 
     # creating all shard entries in ShardT
     for shard in shards:
-        shard_query = f"INSERT INTO ShardT VALUES ({shard["Stud_id_low"]}, {shard["Shard_id"]}, {shard["Shard_size"]}, {shard["Stud_id_low"]})"
+        shard_query = f'INSERT INTO ShardT VALUES ({shard["Stud_id_low"]}, {shard["Shard_id"]}, {shard["Shard_size"]}, {shard["Stud_id_low"]})'
         mysql_cursor.execute(shard_query)
         mysql_conn.commit()
 
@@ -167,4 +167,4 @@ async def init_system(request: Request):
 #             if sh not in app.hash_dict:
 #                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
-#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8080)
+#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
