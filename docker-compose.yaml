@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  metadb:
+    image: mysql:8.0
+    container_name: metadb
+    env_file:
+      - ./metadb.env
+    networks:
+      - mynet
+      
+  lb:
+    build: ./lb
+    image: lb
+    container_name: lb 
+    env_file:
+      - ./metadb.env
+    volumes:
+      - ./lb:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8000:8000"
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - mynet
+    
+networks:
+  mynet:
+    name: mynet

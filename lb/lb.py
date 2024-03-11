@@ -11,11 +11,12 @@ import requests
 while True:
     try:
         mysql_conn = conn.connect(
-            host=os.getenv("MYSQL_HOST"),
-            user=os.getenv("MYSQL_USER", "user"),
-            password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
+            host="metadb",
+            user=os.getenv("MYSQL_USER", "bhanu"),
+            password=os.getenv("MYSQL_PASSWORD", "bhanu@1489"),
             database=os.getenv("MYSQL_DATABASE", "StudentDB"),
         )
+        print("connected")
         break
     
     except Exception as e:
@@ -39,7 +40,7 @@ app.server_list = {}
 
 def create_server(server_name):
     command = "docker run --name {container_name} --env SERVER_ID={container_name} \
-            --network {network_name}  -d serverimg".format(container_name=server_name, network_name="my-net")
+           -d --network={network_name} serverimg".format(container_name=server_name, network_name="mynet")
 
     result = subprocess.run(command, shell=True, text=True)
     print(result.returncode)
@@ -115,13 +116,20 @@ async def init_system(request: Request):
             return result['response']
 
         # need to change to the network name currently put as localhost for testing
-        url = f"http://{result['ipaddr']}:{8080}/config"
+        url = f"http://{result['ipaddr']}:{8000}/config"
+        print(url)
         data = {
             "schema": schema,
             "shards": [sh["Shard_id"] for sh in shards]
         }
-
-        requests.post(url, data)
+        # time.sleep(10)
+        while True:
+           try:
+                requests.post(url, data,timeout=None)
+                break
+           except Exception as e:
+                # print("trying again")
+               pass
             
         # on success
         app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
