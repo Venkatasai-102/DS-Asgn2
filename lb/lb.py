@@ -1,27 +1,33 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse,RedirectResponse
-import subprocess
 from random import randint
-import mysql.connector as conn
+import uvicorn
+import subprocess
 import os
 import time
 from consistent_hashing import ConsistentHashing
 import requests
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse,RedirectResponse
+import mysql.connector as conn
+
+print("Strating Load Balancer......")
+
 while True:
     try:
         mysql_conn = conn.connect(
-            host=os.getenv("MYSQL_HOST"),
-            user=os.getenv("MYSQL_USER", "user"),
+            # host=os.getenv("MYSQL_HOST"),
+            user=os.getenv("MYSQL_USER", "root"),
             password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
             database=os.getenv("MYSQL_DATABASE", "StudentDB"),
         )
         break
     
     except Exception as e:
+        print(e)
         time.sleep(0.02)
 
 mysql_cursor = mysql_conn.cursor()
+print("Connected to MySQL!")
 
 
 app = FastAPI()
@@ -167,4 +173,7 @@ async def init_system(request: Request):
 #             if sh not in app.hash_dict:
 #                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
-#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
+#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8080)
+
+
+uvicorn.run(app, host="0.0.0.0", port=8080)
