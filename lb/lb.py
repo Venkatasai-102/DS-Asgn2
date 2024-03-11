@@ -115,7 +115,7 @@ async def init_system(request: Request):
             return result['response']
 
         # need to change to the network name currently put as localhost for testing
-        url = f"http://{result['ipaddr']}:{8080}/config"
+        url = f"http://{result['ipaddr']}:{8000}/config"
         data = {
             "schema": schema,
             "shards": [sh["Shard_id"] for sh in shards]
@@ -131,6 +131,7 @@ async def init_system(request: Request):
             
             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
             
+            # need to handle the case when one of the server fails, we need to stop the already created servers or do something else
             ## add shard-server mapping to database
             add_mapt_query = f"""
             INSERT INTO MapT VALUES ({sh}, {server_name})
@@ -144,27 +145,58 @@ async def init_system(request: Request):
         mysql_cursor.execute(shard_query)
         mysql_conn.commit()
 
-        
-# @app.post("/add")
-# async def add_servers(request: Request):
-#     req = await request.json()
-#     n = req['N']
-#     new_shards, servers = req['shards'], req['servers']
+  
+@app.post("/add")
+async def add_servers(request: Request):
+    req = await request.json()
+    n = req['n']
+    new_shards, servers = req['shards'], req['servers']
 
-#     shard_names = []
-#     for shard in new_shards:
-#         shard_names.append(shard['Shard_id'])
+    if n > len(servers):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": "<Error> Number of new servers (n) is greater than newly added instances",
+                "status": "failure"
+            }
+        )
     
-#     for server_name in servers:
-#         result = create_server(server_name)
+    # need to create random server id when not given, currently assuming n = len(servers)
+
+    for server_name in servers:
+        result = create_server(server_name)
         
-#         if result['status'] == 'failure':
-#             return result['response']
+        if result['status'] == 'failure':
+            return result['response']
             
-#         # on success
-#         app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
-#         for sh in servers[server_name]:
-#             if sh not in app.hash_dict:
-#                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
+        # on success, adding this new server to the respective shards' consistent hashing object
+        app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
+        for sh in servers[server_name]:
+            if sh not in app.hash_dict:
+                app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
-#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
+            app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
+
+            # need to handle the case when one of the server fails, we need to stop the already created servers or do something else
+            # adding entry in MapT
+            add_mapt_query = f"""
+            INSERT INTO MapT VALUES ({sh}, {server_name})
+            """
+            mysql_cursor.execute(add_mapt_query)
+            mysql_conn.commit()
+        
+        # calling the /config api of this new server
+        url = f"http://{result['ipaddr']}:{8000}/config"
+        data = {
+            "schema": {"columns":["Stud_id","Stud_name","Stud_marks"],
+                       "dtypes":["Number","String","String"]},
+            "shards": [sh["Shard_id"] for sh in servers[server_name]]
+        }
+
+        requests.post(url, data)
+    
+    # adding entries in ShardT
+    for shard in new_shards:
+        shard_query = f'INSERT INTO ShardT VALUES ({shard["Stud_id_low"]}, {shard["Shard_id"]}, {shard["Shard_size"]}, {shard["Stud_id_low"]})'
+        mysql_cursor.execute(shard_query)
+        mysql_conn.commit()
