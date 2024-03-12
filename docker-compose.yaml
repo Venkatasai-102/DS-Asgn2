@@ -23,6 +23,12 @@ services:
     command: ["tail", "-f", "/dev/null"]
     networks:
       - mynet
+
+    server:
+      build: ./server
+      image: serverimg
+      networks:
+        - mynet
     
 networks:
   mynet:
