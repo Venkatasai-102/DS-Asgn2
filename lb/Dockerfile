@@ -1,19 +1,12 @@
 FROM ubuntu:20.04
 
-# Set the working directory to /app
-WORKDIR /app
-
-COPY . /app/
 
 RUN apt-get -y update
 RUN apt-get  install -y python3
 RUN apt-get  install -y python3-pip
 
 RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
 
-
-RUN apt-get -y update
 
 
 
@@ -33,6 +26,13 @@ RUN apt-get -y update
 
 
 RUN apt-get -y  install docker-ce-cli 
+
+# Set the working directory to /app
+WORKDIR /app
+COPY . /app/
+
+RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get -y update
 
 # Run app.py when the container launches
 CMD ["uvicorn", "lb:app", "--host", "0.0.0.0", "--port", "8000","--reload"]
