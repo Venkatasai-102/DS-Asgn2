@@ -35,6 +35,7 @@ async def heartbeat():
 async def initialize_shards(request: Request):
     try:
         req = await request.json()
+        print(req)
         # schema is a dictionary with columns as stud_id, stud_name, stud_marks and 
         # dtypes as number, string, string
         schema = req["schema"]
@@ -73,7 +74,8 @@ async def initialize_shards(request: Request):
         mysql_conn.rollback()
         raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
     
-    except:
+    except Exception as e:
+        print(e)
         raise HTTPException(status_code=400, detail="Invalid request")
     
 @app.get("/copy")

@@ -5,12 +5,12 @@ import os
 import time
 from consistent_hashing import ConsistentHashing
 import requests
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse,RedirectResponse
 import mysql.connector as conn
+from helpers import create_server,remove_servers,get_servers
 
-print("Strating Load Balancer......")
+print("Starting Load Balancer......")
 
 while True:
     try:
@@ -44,54 +44,20 @@ app.hash_dict = {}
 app.server_list = {}
 
 
-def create_server(server_name):
-    command = "docker run --name {container_name} --env SERVER_ID={container_name} \
-           -d --network={network_name} serverimg".format(container_name=server_name, network_name="mynet")
-
-    result = subprocess.run(command, shell=True, text=True)
-    print(result.returncode)
-    
-    if result.returncode == 0:
-        ipcommand = [
-            'docker',
-            'inspect',
-            '--format={{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',
-            server_name
-        ]
-        ip = subprocess.run(
-            ipcommand, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, text=True)
-        ipaddr = ip.stdout.strip()        
-        return {'status': 'success', 'ipaddr': ipaddr, 'name': server_name }
-    
-    else:
-        return {'status': 'failure',
-                'response': JSONResponse(
-            status_code=500,
-            content={
-                "message": {
-                    "N": len(list(app.server_list.keys())),
-                    "replicas": list(app.server_list.keys()),
-                    "error": f"failed to create server: {server_name}"
-                },
-                "status": "failure"
-            }
-            )
-        }
-
 @app.post("/init")
 async def init_system(request: Request):
     req = await request.json()
     n, schema = req['N'], req['schema']
     shards, servers = req['shards'], req['servers']
-    
-    if n != len(shards) or n != len(servers):
-        return JSONResponse(
-            status_code=400,
-            content={
-                "message": f"value of N and number of shards/servers don't match!",
-                "status": "failure"
-            }
-        )
+    print(servers)
+    # if n != len(shards) or n != len(servers):
+    #     return JSONResponse(
+    #         status_code=400,
+    #         content={
+    #             "message": f"value of N and number of shards/servers don't match!",
+    #             "status": "failure"
+    #         }
+    #     )
         
     # To store the shards map with server in database
     # MapT Schema
@@ -116,47 +82,58 @@ async def init_system(request: Request):
     mysql_cursor.execute(create_shardt_query)
     mysql_conn.commit()
     
+    ip={}
     for server_name in servers:
-        result = create_server(server_name)
-        if result['status'] == 'failure':
-            return result['response']
-
+        name,ipaddr = create_server(name=server_name)
+        ip[name] = ipaddr
+        
         # need to change to the network name currently put as localhost for testing
-        url = f"http://{result['ipaddr']}:{8000}/config"
+    for server_name in servers:
+        url = f"http://{ip[server_name]}:{8000}/config"
         print(url)
         data = {
             "schema": schema,
             "shards": [sh["Shard_id"] for sh in shards]
         }
+        print(data)
         # time.sleep(10)
         while True:
            try:
-                requests.post(url, data,timeout=None)
+                result = requests.post(url, json=data,timeout=None)
+                print(result.ok)
                 break
-           except Exception as e:
-                # print("trying again")
-               pass
+           except requests.RequestException as e:
+                print("trying again")
+                time.sleep(30)
             
         # on success
-        app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
+        app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
         for sh in servers[server_name]:
             if sh not in app.hash_dict:
                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
-            app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8000)
+            app.hash_dict[sh].add_server(app.server_list[server_name]['index'], ip[server_name], 8000)
             
             ## add shard-server mapping to database
-            add_mapt_query = f"""
-            INSERT INTO MapT VALUES ({sh}, {server_name})
-            """
-            mysql_cursor.execute(add_mapt_query)
-            mysql_conn.commit()
+            add_mapt_query = "INSERT INTO MapT VALUES (%s, %s)"
+            print(add_mapt_query)
+            try:
+                mysql_cursor.execute(add_mapt_query,(sh,server_name))
+                mysql_conn.commit()
+            except Exception as e:
+                print(e)
+                print("Issue is here")
 
     # creating all shard entries in ShardT
     for shard in shards:
-        shard_query = f'INSERT INTO ShardT VALUES ({shard["Stud_id_low"]}, {shard["Shard_id"]}, {shard["Shard_size"]}, {shard["Stud_id_low"]})'
-        mysql_cursor.execute(shard_query)
-        mysql_conn.commit()
+        shard_query = "INSERT INTO ShardT VALUES (%s,%s,%s,%s)"
+
+        try:
+            mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
+            mysql_conn.commit()
+        except Exception as e:
+                print(e)
+                print("Issue is here ):")
 
         
 # @app.post("/add")
@@ -176,12 +153,12 @@ async def init_system(request: Request):
 #             return result['response']
             
 #         # on success
-#         app.serverList[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
+#         app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": result['ipaddr']}
 #         for sh in servers[server_name]:
 #             if sh not in app.hash_dict:
 #                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
-#             app.hash_dict[sh].add_server(app.serverList[server_name]['index'], result['ipaddr'], 8080)
+#             app.hash_dict[sh].add_server(app.server_list[server_name]['index'], result['ipaddr'], 8080)
 
 
-uvicorn.run(app, host="0.0.0.0", port=8080)
+# uvicorn.run(app, host="0.0.0.0", port=8080)
