@@ -24,11 +24,11 @@ services:
     networks:
       - mynet
 
-    server:
-      build: ./server
-      image: serverimg
-      networks:
-        - mynet
+  server:
+    build: ./server
+    image: serverimg
+    networks:
+      - mynet
     
 networks:
   mynet:
