@@ -5,11 +5,11 @@ import os
 import time
 from consistent_hashing import ConsistentHashing
 import requests
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request,HTTPException
 from fastapi.responses import JSONResponse,RedirectResponse
 import mysql.connector as conn
 from helpers import create_server,remove_servers,get_servers
-
+from docker import errors
 print("Starting Load Balancer......")
 
 while True:
@@ -197,3 +197,33 @@ async def add_servers(request: Request):
         shard_query ="INSERT INTO ShardT VALUES (%s,%s,%s,%s)"
         mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
         mysql_conn.commit()
+
+
+
+@app.delete("/rm")
+async def rm_servers(request:Request):
+    req = await request.json()
+    n = req["n"]
+    servers = req["servers"]
+
+    if n < len(servers):
+        raise HTTPException(status_code=400, detail={"message":"<Error> Length of server list is more than removable instances","status":"failure"})
+    
+    #procceed with removal 
+
+    try:
+        remove_servers(servers)
+        for server in servers:
+           # code to update hash_dict,server_list
+            pass
+        return {
+             "message":{
+                 "N":len(servers),
+                 "servers":[",".join(servers)]
+             },
+             "status":"successfull"
+        }
+
+    except errors.DockerException as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
