@@ -3,6 +3,7 @@ import uvicorn
 import subprocess
 import os
 import time
+import sqlite3
 from consistent_hashing import ConsistentHashing
 import requests
 from fastapi import FastAPI, Request,HTTPException
@@ -10,8 +11,18 @@ from fastapi.responses import JSONResponse,RedirectResponse
 import mysql.connector as conn
 from helpers import create_server,remove_servers,get_servers
 from docker import errors
-print("Starting Load Balancer......")
+from requests.exceptions import RequestException
 
+print("Starting Load Balancer......")
+import os
+
+# # Path to the SQLite database file
+# db_file = 'example.db'
+
+# # Check if the database file exists
+# if os.path.exists(db_file):
+#     # Delete the existing database file
+#     os.remove(db_file)
 while True:
     try:
         mysql_conn = conn.connect(
@@ -28,6 +39,8 @@ while True:
         time.sleep(0.02)
 
 mysql_cursor = mysql_conn.cursor()
+# mysql_conn = sqlite3.connect('example.db')
+# mysql_cursor = mysql_conn.cursor()
 print("Connected to MySQL!")
 
 
@@ -85,6 +98,7 @@ async def init_system(request: Request):
     ip={}
     for server_name in servers:
         name,ipaddr = create_server(name=server_name)
+        print(f"created {server_name}")
         ip[name] = ipaddr
         
         # need to change to the network name currently put as localhost for testing
@@ -122,7 +136,7 @@ async def init_system(request: Request):
                 mysql_cursor.execute(add_mapt_query,(sh,server_name))
                 mysql_conn.commit()
             except Exception as e:
-                # print(e)
+                print(e)
                 print("Issue is here")
 
     # creating all shard entries in ShardT
@@ -227,3 +241,62 @@ async def rm_servers(request:Request):
     except errors.DockerException as e:
         print(e)
         raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+
+@app.post("/write")
+async def write(request: Request):
+    # need to map shard to server
+    try:
+        req = await request.json()
+        students = req["data"]
+        print(students)
+
+        GET_SHARDS_QUERY = "SELECT * FROM ShardT"
+        mysql_cursor.execute(GET_SHARDS_QUERY)
+        rows = mysql_cursor.fetchall()
+        shards = {row[1]: {"students":[],"attr":list(row),"server":None} for row in rows}
+        
+        mysql_cursor.execute("SELECT * FROM MapT")
+        MapT_rows =mysql_cursor.fetchall()
+        
+        for MapT_row in MapT_rows:
+            shard_id = MapT_row[0]
+            server = MapT_row[1]
+            shards[shard_id]["server"]=server
+
+        print(shards)
+        for student in students:
+            Stud_id =student["Stud_id"]
+            Stud_name=student["Stud_name"]
+            Stud_marks=student["Stud_marks"]
+            
+            for shard_id in shards:
+                if shards[shard_id]["attr"][0] <= Stud_id and Stud_id <= shards[shard_id]["attr"][2]:
+                    shards[shard_id]["students"].append((Stud_id,Stud_name,Stud_marks))
+        
+        for shard_id in shards:
+            queries = [{"Stud_id":stud[0],"Stud_name":stud[1],"Stud_marks":stud[2]} for stud in shards[shard_id]["students"]]
+            data= { "shard":shard_id,"curr_idx":shards[shard_id]["attr"][3] ,"data":queries}
+            print(f"Sending request to {shards[shard_id]['server']} :{shard_id}")
+            result = requests.post(f"http://{shards[shard_id]['server']}:8000/write",json=data,timeout=15)
+            print(result.json())
+            curr_idx = result.json()["current_idx"]
+            shards[shard_id]["attr"][3]=curr_idx
+            mysql_cursor.execute("UPDATE ShardT SET valid_idx= %s WHERE Stud_id_low = %s AND Shard_id = %s",(curr_idx,shards[shard_id]["attr"][0],shard_id))
+            mysql_conn.commit()
+        
+        return {"message":f"{len(students)} Data entries added","status":"success"}
+        
+    except RequestException as e:
+        print("RequestException:", e)
+        return JSONResponse(status_code=500, content={"message": "Request failed", "status": "failure"})
+        
+    except sqlite3.Error as e: 
+        print("SQLite Error:", e)
+        return JSONResponse(status_code=500, content={"message": "SQLite error", "status": "failure"})
+        
+    except Exception as e:
+        print("Other Exception:", e)
+        return JSONResponse(status_code=500, content={"message": "Unexpected error", "status": "failure"})
+        
+        
