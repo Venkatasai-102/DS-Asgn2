@@ -24,7 +24,7 @@ while True:
         break
     
     except Exception as e:
-        print(e)
+        # print(e)
         time.sleep(0.02)
 
 mysql_cursor = mysql_conn.cursor()
@@ -103,9 +103,10 @@ async def init_system(request: Request):
                 print(result.ok)
                 break
            except requests.RequestException as e:
+                # print(e)
                 print("trying again")
-                time.sleep(30)
-            
+                time.sleep(0.5)
+    
         # on success
         app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
         for sh in servers[server_name]:
@@ -121,7 +122,7 @@ async def init_system(request: Request):
                 mysql_cursor.execute(add_mapt_query,(sh,server_name))
                 mysql_conn.commit()
             except Exception as e:
-                print(e)
+                # print(e)
                 print("Issue is here")
 
     # creating all shard entries in ShardT
@@ -188,7 +189,7 @@ async def add_servers(request: Request):
                 break
             except:
                 print("retry after sleeping 30sec")
-                time.sleep(30)
+                time.sleep(0.5)
                 
 
         
