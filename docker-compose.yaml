@@ -20,12 +20,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
-    command: ["tail", "-f", "/dev/null"]
+    command: ["uvicorn","lb:app","--reload","--host","0.0.0.0"]
     networks:
       - mynet
       
   server:
-      build: ./server
+      build: 
+        context: ./server
+        dockerfile: Dockerfile.sqlite
       image: serverimg
       networks:
         - mynet
