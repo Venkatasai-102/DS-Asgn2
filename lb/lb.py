@@ -55,14 +55,14 @@ async def init_system(request: Request):
     shards, servers = req['shards'], req['servers']
     print(servers)
 
-    if n != len(shards) or n != len(servers):
-        return JSONResponse(
-            status_code=400,
-            content={
-                "message": f"value of N and number of shards/servers don't match!",
-                "status": "failure"
-            }
-        )
+    # if n != len(shards) or n != len(servers):
+    #     return JSONResponse(
+    #         status_code=400,
+    #         content={
+    #             "message": f"value of N and number of shards/servers don't match!",
+    #             "status": "failure"
+    #         }
+    #     )
         
     # To store the shards map with server in database
     # MapT Schema
@@ -225,7 +225,7 @@ async def read_data(request: Request):
     get_shards_query = "SELECT * from ShardT"
     mysql_cursor.execute(get_shards_query)
     response = mysql_cursor.fetchall()
-    request_id = randint()%NUM_SLOTS
+    request_id = randint(1, MAX_REQUEST_COUNT)%NUM_SLOTS
 
     shards_queried = []
 
@@ -237,17 +237,34 @@ async def read_data(request: Request):
 
     result = []
 
+    for sh in app.hash_dict:
+        print(sh)
+    
+    print("some random string is getting printed")
+
     for row in valid_rows:
         consistent_hashing_object = app.hash_dict[row[1]]
         server = consistent_hashing_object.get_nearest_server(request_id)
 
-        url = f"{server.server_ip}:{8000}/read"
+        url = f"http://{server.server_ip}:{8000}/read"
         data = {
             "low": max(row[0], stud_low),
             "high": min(row[0]+row[3], stud_high)
         }
 
         resp = requests.get(url, json=data)
+        
+        if resp.status_code != 200:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "Invalid query",
+                    "status": "failure"
+                }
+            )
+        
+        resp = resp.json()
+        
         if resp["status"] == "success":
             result += resp["data"]
         else:
