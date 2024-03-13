@@ -25,7 +25,9 @@ services:
       - mynet
 
     server:
-      build: ./server
+      build: 
+        context: ./server
+        dockerfile: Dockerfile.sqlite
       image: serverimg
       networks:
         - mynet
