@@ -117,6 +117,7 @@ async def add_students_data(request: Request):
     try:
         req = await request.json()
         shard = req["shard"]
+        curr_idx = req["curr_idx"]
         data = req["data"]
 
         for row in data:
@@ -126,9 +127,11 @@ async def add_students_data(request: Request):
             )
 
         conn.commit()
+        curr_idx+=len(data)
 
         response = {
             "message": "Data entries added",
+            "current_idx": curr_idx,
             "status": "success"
         }
 
