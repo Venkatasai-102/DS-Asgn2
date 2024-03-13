@@ -215,7 +215,7 @@ async def add_servers(request: Request):
         "status": "success"
     }
 
-@app.get("/read")
+@app.post("/read")
 async def read_data(request: Request):
     req = await request.json()
     stud_low = req["Stud_id"]["low"]
@@ -231,16 +231,11 @@ async def read_data(request: Request):
 
     valid_rows = []
     for row in response:
-        if not (stud_low > row[0]+row[3] or row[0] > stud_high):
+        if not (stud_low >= row[3] or row[0] > stud_high):
             valid_rows.append(row)
             shards_queried.append(row[1])
 
     result = []
-
-    for sh in app.hash_dict:
-        print(sh)
-    
-    print("some random string is getting printed")
 
     for row in valid_rows:
         consistent_hashing_object = app.hash_dict[row[1]]
@@ -248,23 +243,26 @@ async def read_data(request: Request):
 
         url = f"http://{server.server_ip}:{8000}/read"
         data = {
-            "low": max(row[0], stud_low),
-            "high": min(row[0]+row[3], stud_high)
+            "shard": row[1],
+            "Stud_id": {
+                "low": max(row[0], stud_low),
+                "high": min(row[0]+row[3], stud_high)
+            }
         }
 
-        resp = requests.get(url, json=data)
+        resp = requests.post(url, json=data)
         
         if resp.status_code != 200:
             return JSONResponse(
                 status_code=400,
                 content={
-                    "message": "Invalid query",
+                    "message": "Invalid status code",
                     "status": "failure"
                 }
             )
         
         resp = resp.json()
-        
+
         if resp["status"] == "success":
             result += resp["data"]
         else:
