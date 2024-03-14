@@ -4,31 +4,41 @@ import os
 import time
 from consistent_hashing import ConsistentHashing
 import requests
-import asyncio
-from fastapi import FastAPI, Request
+from requests import RequestException
+from docker import errors
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse,RedirectResponse
 import mysql.connector as conn
 from helpers import create_server, remove_servers, get_servers
+import sqlite3
 
 print("Starting Load Balancer......")
 
-while True:
-    try:
-        mysql_conn = conn.connect(
-            host="metadb",
-            user=os.getenv("MYSQL_USER", "user"),
-            password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
-            database=os.getenv("MYSQL_DATABASE", "StudentDB"),
-        )
-        print("connected")
-        break
+# while True:
+#     try:
+#         mysql_conn = conn.connect(
+#             host="metadb",
+#             user=os.getenv("MYSQL_USER", "user"),
+#             password=os.getenv("MYSQL_PASSWORD", "Pass@123"),
+#             database=os.getenv("MYSQL_DATABASE", "StudentDB"),
+#         )
+#         print("connected")
+#         break
     
-    except Exception as e:
-        print(e)
-        time.sleep(0.02)
+#     except Exception as e:
+#         print(e)
+#         time.sleep(0.02)
 
+# mysql_cursor = mysql_conn.cursor()
+# print("Connected to MySQL!")
+
+import os
+db_file = "example.db"
+if os.path.exists(db_file):
+    os.remove(db_file)
+
+mysql_conn = sqlite3.connect('example.db')
 mysql_cursor = mysql_conn.cursor()
-print("Connected to MySQL!")
 
 
 app = FastAPI()
@@ -55,14 +65,14 @@ async def init_system(request: Request):
     shards, servers = req['shards'], req['servers']
     print(servers)
 
-    # if n != len(shards) or n != len(servers):
-    #     return JSONResponse(
-    #         status_code=400,
-    #         content={
-    #             "message": f"value of N and number of shards/servers don't match!",
-    #             "status": "failure"
-    #         }
-    #     )
+    if n != len(shards) or n != len(servers):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": f"value of N and number of shards/servers don't match!",
+                "status": "failure"
+            }
+        )
         
     # To store the shards map with server in database
     # MapT Schema
@@ -108,7 +118,7 @@ async def init_system(request: Request):
                 break
            except requests.RequestException as e:
                 print("trying again")
-                time.sleep(30)
+                time.sleep(2) # time sleep for sqlite is 2 sec and for mysql need change to 30 sec
             
         # on success
         app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
@@ -119,7 +129,7 @@ async def init_system(request: Request):
             app.hash_dict[sh].add_server(app.server_list[server_name]['index'], ip[server_name], 8000)
             
             ## add shard-server mapping to database
-            add_mapt_query = "INSERT INTO MapT VALUES (%s, %s)"
+            add_mapt_query = "INSERT INTO MapT VALUES (?, ?)"
             print(add_mapt_query)
             try:
                 mysql_cursor.execute(add_mapt_query,(sh,server_name))
@@ -130,7 +140,7 @@ async def init_system(request: Request):
 
     # creating all shard entries in ShardT
     for shard in shards:
-        shard_query = "INSERT INTO ShardT VALUES (%s,%s,%s,%s)"
+        shard_query = "INSERT INTO ShardT VALUES (?,?,?,?)"
 
         try:
             mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
@@ -144,6 +154,35 @@ async def init_system(request: Request):
         "status" : "success"
     }
 
+@app.get("/status")
+async def get_status():
+    try:
+        get_shards_query = "SELECT Stud_id_low, Shard_id, Shard_size FROM ShardT"
+        mysql_cursor.execute(get_shards_query)
+        shard_rows = mysql_cursor.fetchall()
+        
+        servers = {}
+        for ser in app.server_list:
+            get_servers = "SELECT Shard_id FROM MapT WHERE Server_id=?"
+            mysql_cursor.execute(get_servers, (ser, ))
+            sh_rows = mysql_cursor.fetchall()
+            servers[ser] = [sh[0] for sh in sh_rows]
+        
+        return {
+            "N": len(app.server_list), # number of servers currently running
+            "schema": {
+                "columns":["Stud_id","Stud_name","Stud_marks"],
+                "dtypes":["Number","String","String"]
+            },
+            "shards": [
+                {col: value for col, value in zip(["Stud_id_low", "Shard_id", "Shard_size"], row)}
+                for row in shard_rows
+            ],
+            "servers": servers
+        }
+    except Exception as e:
+        print("Exception:", e)
+        return JSONResponse(status_code=500, content={"message": "Internal Server Error"})
         
 @app.post("/add")
 async def add_servers(request: Request):
@@ -182,7 +221,7 @@ async def add_servers(request: Request):
             # need to handle the case when one of the server fails, we need to stop the already created servers or do something else
             # adding entry in MapT
 
-            add_mapt_query = "INSERT INTO MapT VALUES (%s,%s)"
+            add_mapt_query = "INSERT INTO MapT VALUES (?,?)"
             mysql_cursor.execute(add_mapt_query,(sh,server_name))
             mysql_conn.commit()
         
@@ -204,7 +243,7 @@ async def add_servers(request: Request):
         
     # adding entries in ShardT
     for shard in new_shards:
-        shard_query ="INSERT INTO ShardT VALUES (%s,%s,%s,%s)"
+        shard_query ="INSERT INTO ShardT VALUES (?,?,?,?)"
         mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
         mysql_conn.commit()
 
@@ -280,6 +319,96 @@ async def read_data(request: Request):
         "status": "success"
     }
 
+
+@app.delete("/rm")
+async def rm_servers(request: Request):
+    try:
+        req = await request.json()
+        n = req["n"]
+        servers = req["servers"]
+
+        if n < len(servers):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "<Error> Length of server list is more than removable instances",
+                    "status" : "failure"
+                }
+            )
+        
+        if n > len(app.server_list):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "<Error> Length of server list is more than number of servers present",
+                    "status" : "failure"
+                }
+            )
+
+        if n > len(servers):
+            for _ in range(n-len(servers)):
+                for ser in app.server_list:
+                    if ser not in servers:
+                        servers.append(ser)
+                        break
+        
+        removing_servers = {}
+        rm_ser_list = []
+        for ser in servers:
+            removing_servers[ser] = app.server_list[ser]
+            app.server_list.pop(ser)
+            rm_ser_list.append(ser)
+        
+        remove_servers(rm_ser_list)
+        
+        for ser in removing_servers:
+            find_shards_query = "SELECT Shard_id FROM MapT WHERE Server_id=?"
+            mysql_cursor.execute(find_shards_query, (ser, ))
+            shards = mysql_cursor.fetchall()
+
+            remove_entry_query = "DELETE FROM MapT WHERE Server_id=?"
+            mysql_cursor.execute(remove_entry_query, (ser, ))
+
+            mysql_conn.commit()
+
+            for sh in shards:
+                app.hash_dict[sh[0]].remove_server(removing_servers[ser]["index"])
+
+                check_shard_query = "SELECT * FROM MapT WHERE Shard_id=?"
+                mysql_cursor.execute(check_shard_query, (sh[0], ))
+                chk = mysql_cursor.fetchall()
+
+                if len(chk) == 0:
+                    app.hash_dict.pop(sh[0])
+                    remove_shard_query = "DELETE FROM ShardT WHERE Shard_id=?"
+                    mysql_cursor.execute(remove_shard_query, (sh[0], ))
+
+                    mysql_conn.commit()
+                
+        return {
+            "message": {
+                "N": len(app.server_list),
+                "servers": rm_ser_list
+            },
+            "status" : "successful"
+        }
+    except errors.DockerException as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Docker removal error")
+
+    except RequestException as e:
+        print("Request Exception:", e)
+        return JSONResponse(status_code=500, content={"message":"Request Failure", "status": "failure"})
+    
+    except sqlite3.Error as e:
+        print("Exeption:", e)
+        return JSONResponse(status_code=500, content={"message": "Sqlite3 error", "status": "failure"})
+
+    except Exception as e:
+        print("Exception:", e)
+        return JSONResponse(status_code=500, content={"message": "Unexpected error", "status": "failure"})
+
+    
     
 # Run the FastAPI app
 if __name__ == "__main__":
