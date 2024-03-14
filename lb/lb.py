@@ -238,8 +238,8 @@ async def add_servers(request: Request):
                 requests.post(url, json=data)
                 break
             except:
-                print("retry after sleeping 30sec")
-                time.sleep(30)
+                print("retry after sleeping 2sec")
+                time.sleep(2)
         
     # adding entries in ShardT
     for shard in new_shards:
@@ -270,7 +270,7 @@ async def read_data(request: Request):
 
     valid_rows = []
     for row in response:
-        if not (stud_low >= row[3] or row[0] > stud_high):
+        if not (stud_low >= row[0]+row[2] or row[0] > stud_high):
             valid_rows.append(row)
             shards_queried.append(row[1])
 
@@ -285,7 +285,7 @@ async def read_data(request: Request):
             "shard": row[1],
             "Stud_id": {
                 "low": max(row[0], stud_low),
-                "high": min(row[0]+row[3], stud_high)
+                "high": min(row[0]+row[2], stud_high)
             }
         }
 
