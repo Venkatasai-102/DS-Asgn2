@@ -2,7 +2,7 @@ import docker
 from typing import Tuple,List
 client = docker.from_env()
 
-def create_server(image:str,network:str ="mynet",name:str =None):
+def create_server(image:str = "serverimg",network:str ="mynet",name:str =None):
     container = client.containers.run(image=image,network=network,name=name,detach=True)
     container.reload()
     name = container.name
