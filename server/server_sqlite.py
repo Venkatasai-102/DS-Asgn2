@@ -44,8 +44,8 @@ async def initialize_shards(request: Request):
             create_table_query = f"""
             CREATE TABLE IF NOT EXISTS {shard} (
                 {schema["columns"][0]} INTEGER PRIMARY KEY,
-                {schema["columns"][1]} TEXT,
-                {schema["columns"][2]} TEXT
+                {schema["columns"][1]} VARCHAR(255),
+                {schema["columns"][2]} VARCHAR(255)
             )
             """
             cursor.execute(create_table_query)
