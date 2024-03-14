@@ -2,6 +2,7 @@ from random import randint
 import uvicorn
 import os
 import time
+import sqlite3
 from consistent_hashing import ConsistentHashing
 import requests
 from requests import RequestException
@@ -98,10 +99,13 @@ async def init_system(request: Request):
     mysql_conn.commit()
     
     ip={}
+    ip={}
     for server_name in servers:
         name,ipaddr = create_server(name=server_name)
+        print(f"created {server_name}")
         ip[name] = ipaddr
-    
+        
+        # need to change to the network name currently put as localhost for testing
     for server_name in servers:
         url = f"http://{ip[server_name]}:{8000}/config"
         print(url)
@@ -110,25 +114,39 @@ async def init_system(request: Request):
             "shards": [sh["Shard_id"] for sh in shards]
         }
         print(data)
+        print(data)
         # time.sleep(10)
         while True:
            try:
                 result = requests.post(url, json=data,timeout=None)
                 print(result.ok)
+                result = requests.post(url, json=data,timeout=None)
+                print(result.ok)
                 break
            except requests.RequestException as e:
+                # print(e)
                 print("trying again")
-                time.sleep(2) # time sleep for sqlite is 2 sec and for mysql need change to 30 sec
-            
+                time.sleep(0.5)
+    
         # on success
+        app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
         app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
         for sh in servers[server_name]:
             if sh not in app.hash_dict:
                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
             app.hash_dict[sh].add_server(app.server_list[server_name]['index'], ip[server_name], 8000)
+            app.hash_dict[sh].add_server(app.server_list[server_name]['index'], ip[server_name], 8000)
             
             ## add shard-server mapping to database
+            add_mapt_query = "INSERT INTO MapT VALUES (?, ?)"
+            print(add_mapt_query)
+            try:
+                mysql_cursor.execute(add_mapt_query,(sh,server_name))
+                mysql_conn.commit()
+            except Exception as e:
+                print(e)
+                print("Issue is here")
             add_mapt_query = "INSERT INTO MapT VALUES (?, ?)"
             print(add_mapt_query)
             try:
@@ -413,3 +431,136 @@ async def rm_servers(request: Request):
 # Run the FastAPI app
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
+
+@app.delete("/rm")
+async def rm_servers(request:Request):
+    req = await request.json()
+    n = req["n"]
+    servers = req["servers"]
+
+    if n < len(servers):
+        raise HTTPException(status_code=400, detail={"message":"<Error> Length of server list is more than removable instances","status":"failure"})
+    
+    #procceed with removal 
+
+    try:
+        remove_servers(servers)
+        for server in servers:
+           # code to update hash_dict,server_list
+            pass
+        return {
+             "message":{
+                 "N":len(servers),
+                 "servers":[",".join(servers)]
+             },
+             "status":"successfull"
+        }
+
+    except errors.DockerException as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+
+@app.post("/write")
+async def write(request: Request):
+    # need to map shard to server
+    try:
+        req = await request.json()
+        students = req["data"]
+        print(students)
+
+        GET_SHARDS_QUERY = "SELECT * FROM ShardT"
+        mysql_cursor.execute(GET_SHARDS_QUERY)
+        rows = mysql_cursor.fetchall()
+        shards = {row[1]: {"students":[],"attr":list(row),"server":[]} for row in rows}
+        
+        mysql_cursor.execute("SELECT * FROM MapT")
+        MapT_rows =mysql_cursor.fetchall()
+        
+        for MapT_row in MapT_rows:
+            shard_id = MapT_row[0]
+            server = MapT_row[1]
+            shards[shard_id]["server"].append(server)
+
+        print(shards)
+        for student in students:
+            Stud_id =student["Stud_id"]
+            Stud_name=student["Stud_name"]
+            Stud_marks=student["Stud_marks"]
+            
+            for shard_id in shards:
+                if shards[shard_id]["attr"][0] <= Stud_id and Stud_id <= shards[shard_id]["attr"][2]:
+                    shards[shard_id]["students"].append((Stud_id,Stud_name,Stud_marks))
+        
+        for shard_id in shards:
+            # acquire the lock for this shard
+
+            queries = [{"Stud_id":stud[0],"Stud_name":stud[1],"Stud_marks":stud[2]} for stud in shards[shard_id]["students"]]
+            data= { "shard":shard_id,"curr_idx":shards[shard_id]["attr"][3] ,"data":queries}
+            curr_idx = None
+            for server in shards[shard_id]["server"]:
+                print(f"Sending request to {server} :{shard_id}")
+                result = requests.post(f"http://{server}:8000/write",json=data,timeout=15)
+                print(result.json())
+                curr_idx = result.json()["current_idx"]
+            shards[shard_id]["attr"][3]=curr_idx
+            mysql_cursor.execute("UPDATE ShardT SET valid_idx= ? WHERE Stud_id_low = ? AND Shard_id = ?",(curr_idx,shards[shard_id]["attr"][0],shard_id))
+            mysql_conn.commit()
+        
+        return {"message":f"{len(students)} Data entries added","status":"success"}
+        
+    except RequestException as e:
+        print("RequestException:", e)
+        return JSONResponse(status_code=500, content={"message": "Request failed", "status": "failure"})
+        
+    except sqlite3.Error as e: 
+        print("SQLite Error:", e)
+        return JSONResponse(status_code=500, content={"message": "SQLite error", "status": "failure"})
+        
+    except Exception as e:
+        print("Other Exception:", e)
+        return JSONResponse(status_code=500, content={"message": "Unexpected error", "status": "failure"})
+        
+
+@app.put("/update")
+async def update_shard(request: Request):
+    req = await request.json()
+    Stud_id = req["Stud_id"]
+    Student = req["data"]
+
+    mysql_cursor.execute("SELECT DISTINCT Shard_id FROM ShardT  WHERE Stud_id_low <= ? AND Stud_id_low + Shard_size > ?",(Stud_id,Stud_id))
+    result = mysql_cursor.fetchone()
+    print(result)
+    if result:
+        shard_id = result[0]
+        
+        #get lock on the shard
+
+        #get all servers that contain the shard
+        mysql_cursor.execute("SELECT DISTINCT Server_id FROM MapT WHERE Shard_id = ?",(shard_id,))
+        servers = mysql_cursor.fetchall()
+        print(servers)
+        if servers:
+            for server in servers:
+                server = server[0]
+                payload = {
+                    "shard":shard_id,
+                    "Stud_id":Stud_id,
+                    "data":Student
+                }
+                result = requests.put(f"http://{server}:8000/update",json=payload,timeout=15)
+                
+                if not result.ok:
+                    raise HTTPException(status_code=500,detail="Internal error")
+            
+            return {
+                "message": f"Data entry for Stud_id:{Stud_id} updated",
+                "status" : "success"
+            }
+            
+        else:
+            return {
+                "message" : "No server found",
+                "status"  : "failure"
+            }
