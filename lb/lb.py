@@ -14,33 +14,32 @@ from docker import errors
 from requests.exceptions import RequestException
 
 print("Starting Load Balancer......")
+
 import os
+db_file = 'example.db'
+if os.path.exists(db_file):
+    os.remove(db_file)
 
-# # Path to the SQLite database file
-# db_file = 'example.db'
 
-# # Check if the database file exists
-# if os.path.exists(db_file):
-#     # Delete the existing database file
-#     os.remove(db_file)
-while True:
-    try:
-        mysql_conn = conn.connect(
-            host="metadb",
-            user=os.getenv("MYSQL_USER", "bhanu"),
-            password=os.getenv("MYSQL_PASSWORD", "bhanu@1489"),
-            database=os.getenv("MYSQL_DATABASE", "StudentDB"),
-        )
-        print("connected")
-        break
+
+# while True:
+#     try:
+#         mysql_conn = conn.connect(
+#             host="metadb",
+#             user=os.getenv("MYSQL_USER", "bhanu"),
+#             password=os.getenv("MYSQL_PASSWORD", "bhanu@1489"),
+#             database=os.getenv("MYSQL_DATABASE", "StudentDB"),
+#         )
+#         print("connected")
+#         break
     
-    except Exception as e:
-        # print(e)
-        time.sleep(0.02)
+#     except Exception as e:
+#         # print(e)
+#         time.sleep(0.02)
 
-mysql_cursor = mysql_conn.cursor()
-# mysql_conn = sqlite3.connect('example.db')
 # mysql_cursor = mysql_conn.cursor()
+mysql_conn = sqlite3.connect('example.db')
+mysql_cursor = mysql_conn.cursor()
 print("Connected to MySQL!")
 
 
@@ -130,7 +129,7 @@ async def init_system(request: Request):
             app.hash_dict[sh].add_server(app.server_list[server_name]['index'], ip[server_name], 8000)
             
             ## add shard-server mapping to database
-            add_mapt_query = "INSERT INTO MapT VALUES (%s, %s)"
+            add_mapt_query = "INSERT INTO MapT VALUES (?, ?)"
             print(add_mapt_query)
             try:
                 mysql_cursor.execute(add_mapt_query,(sh,server_name))
@@ -141,7 +140,7 @@ async def init_system(request: Request):
 
     # creating all shard entries in ShardT
     for shard in shards:
-        shard_query = "INSERT INTO ShardT VALUES (%s,%s,%s,%s)"
+        shard_query = "INSERT INTO ShardT VALUES (?,?,?,?)"
 
         try:
             mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
@@ -185,7 +184,7 @@ async def add_servers(request: Request):
             # need to handle the case when one of the server fails, we need to stop the already created servers or do something else
             # adding entry in MapT
 
-            add_mapt_query = "INSERT INTO MapT VALUES (%s,%s)"
+            add_mapt_query = "INSERT INTO MapT VALUES (?,?)"
             mysql_cursor.execute(add_mapt_query,(sh,server_name))
             mysql_conn.commit()
         
@@ -208,7 +207,7 @@ async def add_servers(request: Request):
 
         
     for shard in new_shards:
-        shard_query ="INSERT INTO ShardT VALUES (%s,%s,%s,%s)"
+        shard_query ="INSERT INTO ShardT VALUES (?,?,?,?)"
         mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
         mysql_conn.commit()
 
@@ -254,7 +253,7 @@ async def write(request: Request):
         GET_SHARDS_QUERY = "SELECT * FROM ShardT"
         mysql_cursor.execute(GET_SHARDS_QUERY)
         rows = mysql_cursor.fetchall()
-        shards = {row[1]: {"students":[],"attr":list(row),"server":None} for row in rows}
+        shards = {row[1]: {"students":[],"attr":list(row),"server":[]} for row in rows}
         
         mysql_cursor.execute("SELECT * FROM MapT")
         MapT_rows =mysql_cursor.fetchall()
@@ -262,7 +261,7 @@ async def write(request: Request):
         for MapT_row in MapT_rows:
             shard_id = MapT_row[0]
             server = MapT_row[1]
-            shards[shard_id]["server"]=server
+            shards[shard_id]["server"].append(server)
 
         print(shards)
         for student in students:
@@ -275,14 +274,18 @@ async def write(request: Request):
                     shards[shard_id]["students"].append((Stud_id,Stud_name,Stud_marks))
         
         for shard_id in shards:
+            # acquire the lock for this shard
+
             queries = [{"Stud_id":stud[0],"Stud_name":stud[1],"Stud_marks":stud[2]} for stud in shards[shard_id]["students"]]
             data= { "shard":shard_id,"curr_idx":shards[shard_id]["attr"][3] ,"data":queries}
-            print(f"Sending request to {shards[shard_id]['server']} :{shard_id}")
-            result = requests.post(f"http://{shards[shard_id]['server']}:8000/write",json=data,timeout=15)
-            print(result.json())
-            curr_idx = result.json()["current_idx"]
+            curr_idx = None
+            for server in shards[shard_id]["server"]:
+                print(f"Sending request to {server} :{shard_id}")
+                result = requests.post(f"http://{server}:8000/write",json=data,timeout=15)
+                print(result.json())
+                curr_idx = result.json()["current_idx"]
             shards[shard_id]["attr"][3]=curr_idx
-            mysql_cursor.execute("UPDATE ShardT SET valid_idx= %s WHERE Stud_id_low = %s AND Shard_id = %s",(curr_idx,shards[shard_id]["attr"][0],shard_id))
+            mysql_cursor.execute("UPDATE ShardT SET valid_idx= ? WHERE Stud_id_low = ? AND Shard_id = ?",(curr_idx,shards[shard_id]["attr"][0],shard_id))
             mysql_conn.commit()
         
         return {"message":f"{len(students)} Data entries added","status":"success"}
@@ -299,4 +302,45 @@ async def write(request: Request):
         print("Other Exception:", e)
         return JSONResponse(status_code=500, content={"message": "Unexpected error", "status": "failure"})
         
+
+@app.put("/update")
+async def update_shard(request: Request):
+    req = await request.json()
+    Stud_id = req["Stud_id"]
+    Student = req["data"]
+
+    mysql_cursor.execute("SELECT DISTINCT Shard_id FROM ShardT  WHERE Stud_id_low <= ? AND Stud_id_low + Shard_size > ?",(Stud_id,Stud_id))
+    result = mysql_cursor.fetchone()
+    print(result)
+    if result:
+        shard_id = result[0]
         
+        #get lock on the shard
+
+        #get all servers that contain the shard
+        mysql_cursor.execute("SELECT DISTINCT Server_id FROM MapT WHERE Shard_id = ?",(shard_id,))
+        servers = mysql_cursor.fetchall()
+        print(servers)
+        if servers:
+            for server in servers:
+                server = server[0]
+                payload = {
+                    "shard":shard_id,
+                    "Stud_id":Stud_id,
+                    "data":Student
+                }
+                result = requests.put(f"http://{server}:8000/update",json=payload,timeout=15)
+                
+                if not result.ok:
+                    raise HTTPException(status_code=500,detail="Internal error")
+            
+            return {
+                "message": f"Data entry for Stud_id:{Stud_id} updated",
+                "status" : "success"
+            }
+            
+        else:
+            return {
+                "message" : "No server found",
+                "status"  : "failure"
+            }
