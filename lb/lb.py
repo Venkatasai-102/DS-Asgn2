@@ -343,16 +343,16 @@ async def rm_servers(request: Request):
             mysql_conn.commit()
 
             for sh in shards:
-                app.hash_dict[sh].remove_server(removing_servers[ser]["index"])
+                app.hash_dict[sh[0]].remove_server(removing_servers[ser]["index"])
 
                 check_shard_query = "SELECT * FROM MapT WHERE Shard_id=?"
-                mysql_cursor.execute(check_shard_query, (sh, ))
+                mysql_cursor.execute(check_shard_query, (sh[0], ))
                 chk = mysql_cursor.fetchall()
 
                 if len(chk) == 0:
-                    app.hash_dict.pop(sh)
+                    app.hash_dict.pop(sh[0])
                     remove_shard_query = "DELETE FROM ShardT WHERE Shard_id=?"
-                    mysql_cursor.execute(remove_shard_query, (sh, ))
+                    mysql_cursor.execute(remove_shard_query, (sh[0], ))
 
                     mysql_conn.commit()
                 
@@ -370,6 +370,10 @@ async def rm_servers(request: Request):
     except RequestException as e:
         print("Request Exception:", e)
         return JSONResponse(status_code=500, content={"message":"Request Failure", "status": "failure"})
+    
+    except sqlite3.Error as e:
+        print("Exeption:", e)
+        return JSONResponse(status_code=500, content={"message": "Sqlite3 error", "status": "failure"})
 
     except Exception as e:
         print("Exception:", e)
