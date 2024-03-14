@@ -1,5 +1,5 @@
 start:
-	docker-compose up -d metadb
+	# docker-compose up -d metadb
 	docker-compose up lb
 
 build:
