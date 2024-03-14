@@ -87,7 +87,8 @@ async def get_all_shards_data(request: Request):
         # Get all data from each shard
         response = {}
         for shard in shards:
-            mysql_cursor.execute(f"SELECT * FROM {shard}")
+            copy_query = f"SELECT * FROM {shard}"
+            mysql_cursor.execute(copy_query)
             response[shard] = mysql_cursor.fetchall()
 
         response["status"] = "success"
@@ -100,7 +101,7 @@ async def get_all_shards_data(request: Request):
     except:
         raise HTTPException(status_code=400, detail="Invalid request")
 
-@app.get("/read")
+@app.post("/read")
 async def get_students_data(request: Request):
     try:
         req = await request.json()
@@ -108,9 +109,10 @@ async def get_students_data(request: Request):
         id_range = req["Stud_id"]
         low = id_range["low"]
         high = id_range["high"]
-
+        
+        get_query = f"SELECT * FROM {shard} WHERE Stud_id >= %s AND Stud_id <= %s"
         # Get data from the shard
-        mysql_cursor.execute(f"SELECT * FROM {shard} WHERE Stud_id >= {low} AND Stud_id <= {high}")
+        mysql_cursor.execute(get_query, (low, high))
         response = {}
         response["data"] = mysql_cursor.fetchall()
 
@@ -121,7 +123,8 @@ async def get_students_data(request: Request):
     except conn.Error as err:
         raise HTTPException(status_code=500, detail=f"An error occurred: {err}")
     
-    except:
+    except Exception as e:
+        print(e)
         raise HTTPException(status_code=400, detail="Invalid request")
 
 @app.post("/write")
@@ -134,7 +137,8 @@ async def add_students_data(request: Request):
 
         # Add data to the shard
         for row in data:
-            mysql_cursor.execute(f"INSERT INTO {shard} VALUES ({row['Stud_id']}, '{row['Stud_name']}', '{row['Stud_marks']}')")
+            write_query = f"INSERT INTO {shard} VALUES (%s, %s, %s)"
+            mysql_cursor.execute(write_query, (row['Stud_id'], row['Stud_name'], row['Stud_marks']))
 
         # Commit changes
         mysql_conn.commit()
@@ -168,8 +172,9 @@ async def update_student_data(request: Request):
         stud_name = data["Stud_name"]
         stud_marks = data["Stud_marks"]
 
+        update_query = f"UPDATE {shard} SET Stud_name = %s, Stud_marks = %s WHERE Stud_id = %s"
         # Update the data
-        mysql_cursor.execute(f"UPDATE {shard} SET Stud_name = '{stud_name}', Stud_marks = '{stud_marks}' WHERE Stud_id = {stud_id}")
+        mysql_cursor.execute(update_query, (stud_name, stud_marks, stud_id))
 
         # Commit changes
         mysql_conn.commit()
@@ -195,8 +200,9 @@ async def delete_student_data(request: Request):
         shard = req["shard"]
         stud_id = req["Stud_id"]
 
+        delete_query = f"DELETE FROM {shard} WHERE Stud_id = %s"
         # Delete the data
-        mysql_cursor.execute(f"DELETE FROM {shard} WHERE Stud_id = {stud_id}")
+        mysql_cursor.execute(delete_query, (stud_id, ))
 
         # Commit changes
         mysql_conn.commit()
