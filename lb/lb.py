@@ -211,8 +211,8 @@ async def add_servers(request: Request):
     for server_name in servers:
         # on success, adding this new server to the respective shards' consistent hashing object
         app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
+        message += f" {server_name},"
         for sh in servers[server_name]:
-            message += f" {server_name},"
             if sh not in app.hash_dict:
                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
             
@@ -437,9 +437,10 @@ async def write(request: Request):
             Stud_marks=student["Stud_marks"]
             
             for shard_id in shards:
-                if shards[shard_id]["attr"][0] <= Stud_id and Stud_id <= shards[shard_id]["attr"][2]:
+                if shards[shard_id]["attr"][0] <= Stud_id and Stud_id <= shards[shard_id]["attr"][0]+shards[shard_id]["attr"][2]:
                     shards[shard_id]["students"].append((Stud_id,Stud_name,Stud_marks))
         
+        data_written = []
         for shard_id in shards:
             # acquire the lock for this shard
 
@@ -449,11 +450,18 @@ async def write(request: Request):
             for server in shards[shard_id]["server"]:
                 print(f"Sending request to {server} :{shard_id}")
                 result = requests.post(f"http://{server}:8000/write",json=data,timeout=15)
+                if result.status_code != 200:
+                    return JSONResponse(status_code=400,content={
+                        "message":f"writes to shard {shard_id} failed",
+                        "data entries written successfully":data_written,
+                        "status":"failure"
+                    })
                 print(result.json())
                 curr_idx = result.json()["current_idx"]
             shards[shard_id]["attr"][3]=curr_idx
             mysql_cursor.execute("UPDATE ShardT SET valid_idx= ? WHERE Stud_id_low = ? AND Shard_id = ?",(curr_idx,shards[shard_id]["attr"][0],shard_id))
             mysql_conn.commit()
+            data_written.extend(queries)
         
         return {"message":f"{len(students)} Data entries added","status":"success"}
         
