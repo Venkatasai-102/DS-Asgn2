@@ -66,7 +66,7 @@ async def add_servers(request: Request):
                 break
             except:
                 print("retry after sleeping 2sec")
-                time.sleep(2)
+                time.sleep(0.1)
         
     # adding entries in ShardT
     for shard in new_shards:

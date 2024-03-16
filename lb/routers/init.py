@@ -71,7 +71,7 @@ async def init_system(request: Request):
                 break
            except requests.RequestException as e:
                 print("trying again")
-                time.sleep(2) # time sleep for sqlite is 2 sec and for mysql need change to 30 sec
+                time.sleep(0.1) # time sleep for sqlite is 2 sec and for mysql need change to 30 sec
             
         # on success
         app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}

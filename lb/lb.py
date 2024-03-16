@@ -1,11 +1,9 @@
-from random import randint
 import uvicorn
 
 
 
-
-from globals import app, mysql_cursor,mysql_conn,MAX_REQUEST_COUNT,MAX_SERVER_INDEX,NUM_SLOTS,VIR_SERVERS
-from routers import init, status, add, rm, update, write, read
+from globals import app
+from routers import init, status, add, rm, update, write, read, delete
 
 print("Starting Load Balancer......")
 
@@ -21,6 +19,7 @@ app.include_router(rm.router)
 app.include_router(update.router)
 app.include_router(write.router)
 app.include_router(read.router)
+app.include_router(delete.router)
 
 
 
