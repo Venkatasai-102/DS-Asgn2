@@ -1,11 +1,14 @@
 import uvicorn
-
+from time import sleep
+from threading import Thread
 
 
 from globals import app
 from routers import init, status, add, rm, update, write, read, delete
 
-print("Starting Load Balancer......")
+from crash_handler import check_server_health
+
+
 
 
         
@@ -23,6 +26,29 @@ app.include_router(delete.router)
 
 
 
+
+# def checker_thread():
+#     while 1:
+#         print("Checking server health ....")
+#         sleep(5)
+    
+
+
 # Run the FastAPI app
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    
+    print("Starting Load Balancer......")
+    
+    # routing_thread()
+    
+    t1 = Thread(target=lambda: uvicorn.run(app, host="0.0.0.0", port=8000))
+    t2 = Thread(target=check_server_health)
+    
+    t2.start()
+    t1.start()
+    
+    t1.join()
+    t2.join()
+    
+    
+    

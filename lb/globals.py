@@ -6,7 +6,7 @@ db_file = "example.db"
 if os.path.exists(db_file):
     os.remove(db_file)
 
-mysql_conn = sqlite3.connect('example.db')
+mysql_conn = sqlite3.connect('example.db', check_same_thread=False)
 mysql_cursor = mysql_conn.cursor()
 
 
@@ -21,6 +21,7 @@ VIR_SERVERS = 9
 # maps for storing locally for loadbalancer
 app.hash_dict = {}
 app.server_list = {}
+app.schema = None
 
 # locks and semaphores for handling concurrency
 app.read_write_lock_dict = {}

@@ -20,7 +20,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
-    command: ["uvicorn","lb:app","--host","0.0.0.0"]
+    command: ["python3","lb.py", "-DTHREADSAFE=1"]
     networks:
       - mynet
       

@@ -17,6 +17,9 @@ async def init_system(request: Request):
     n, schema = req['N'], req['schema']
     shards, servers = req['shards'], req['servers']
     print(servers)
+    
+    
+    app.schema = schema
 
     if n != len(shards) or n != len(servers):
         return JSONResponse(
@@ -63,7 +66,7 @@ async def init_system(request: Request):
             "shards": [sh["Shard_id"] for sh in shards]
         }
         print(data)
-        # time.sleep(10)
+        
         while True:
            try:
                 result = requests.post(url, json=data,timeout=None)
@@ -71,10 +74,10 @@ async def init_system(request: Request):
                 break
            except requests.RequestException as e:
                 print("trying again")
-                time.sleep(0.1) # time sleep for sqlite is 2 sec and for mysql need change to 30 sec
+                time.sleep(1) # time sleep for sqlite is 2 sec and for mysql need change to 30 sec
             
         # on success
-        app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name]}
+        app.server_list[server_name] = {"index": randint(1, MAX_SERVER_INDEX), "ip": ip[server_name], "shards": data["shards"]}
         for sh in servers[server_name]:
             if sh not in app.hash_dict:
                 app.hash_dict[sh] = ConsistentHashing(NUM_SLOTS, VIR_SERVERS)
