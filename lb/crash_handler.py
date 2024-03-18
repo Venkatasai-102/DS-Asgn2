@@ -84,17 +84,27 @@ def respawn_dead_server(dead_server):
         cursor.execute("DELETE FROM MapT WHERE Server_id=? AND Shard_id=?",(dead_server,sh))
         conn.commit()
         # get another server containing this shard from database & copy from that server       #TODO
-        cursor.execute("SELECT Server_id FROM MapT WHERE Shard_id=?",(sh,))
-        server_id = cursor.fetchone()
-        server_id = server_id[0]
-
+        cursor.execute("SELECT DISTINCT Server_id FROM MapT WHERE Shard_id=?",(sh,))
+        server_sh = cursor.fetchall()
+        students = None
+        server_id = None
+        for __server in server_sh:
         # now make a req to    /copy endpoint
-        resp = requests.get(f"http://{ipaddr}:8000/copy",json={
-            "shards": [sh]
-        },timeout=15)
-        students = resp.json()[sh]
-        
-        #copy the shard data to the newly spawned server 
+            try:
+                server_id = __server[0]
+                resp = requests.get(f"http://{app.server_list[server_id]['ip']}:8000/copy",json={
+                    "shards": [sh]
+                },timeout=15)
+                students = resp.json()[sh]
+                break
+            except requests.RequestException as e:
+                print(f"Request to {server_id} failed",flush=True)
+                print("Trying with another server",flush=True)
+
+            print("<::::::::::::::::::::::>")
+            print(students)
+            print("<::::::::::::::::::::::::::::::::::::>")
+            # copy the shard data to the newly spawned server 
         requests.post(f"http://{ipaddr}:8000/write",json={
             "shard":sh,
             "curr_idx": 0, 
@@ -128,7 +138,7 @@ def check_server_health():
                 respawn_dead_server(server)
         # Unlock server_list
         
-        sleep(1)
+        sleep(10)
             
             
             
