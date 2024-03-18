@@ -13,6 +13,15 @@ router = APIRouter()
 
 @app.post("/init")
 async def init_system(request: Request):
+#     "N":3
+#  "schema":{"columns":["Stud_id","Stud_name","Stud_marks"],
+#  "dtypes":["Number","String","String"]}
+#  "shards":[{"Stud_id_low":0, "Shard_id": "sh1", "Shard_size":4096},
+#  {"Stud_id_low":4096, "Shard_id": "sh2", "Shard_size":4096},
+#  {"Stud_id_low":8192, "Shard_id": "sh3", "Shard_size":4096},]
+#  "servers":{"Server0":["sh1","sh2"],
+#  "Server1":["sh2","sh3"],
+
     req = await request.json()
     n, schema = req['N'], req['schema']
     shards, servers = req['shards'], req['servers']
@@ -63,7 +72,7 @@ async def init_system(request: Request):
         print(url)
         data = {
             "schema": schema,
-            "shards": [sh["Shard_id"] for sh in shards]
+            "shards": servers[server_name]
         }
         print(data)
         
