@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request,Body
 from fastapi.responses import JSONResponse
 import time
 from consistent_hashing import ConsistentHashing
@@ -7,13 +7,13 @@ from random import randint
 
 from helpers import create_server
 from globals import *
+from typing import Any
 
 router = APIRouter()
 
 
 @app.post("/add")
-async def add_servers(request: Request):
-    req = await request.json()
+def add_servers(req: Any = Body(...)):
     n = req['n']
     new_shards, servers = req['new_shards'], req['servers']
 
@@ -73,8 +73,8 @@ async def add_servers(request: Request):
         shard_query ="INSERT INTO ShardT VALUES (?,?,?,?)"
         mysql_cursor.execute(shard_query,(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"],shard["Stud_id_low"]))
         mysql_conn.commit()
-
-
+    
+    
     return {
         "N": len(app.server_list),
         "message": message,

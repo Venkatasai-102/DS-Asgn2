@@ -5,7 +5,7 @@ from globals import app, mysql_cursor
 router = APIRouter()
 
 @app.get("/status")
-async def get_status():
+def get_status():
     try:
         get_shards_query = "SELECT Stud_id_low, Shard_id, Shard_size FROM ShardT"
         mysql_cursor.execute(get_shards_query)

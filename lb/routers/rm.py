@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException,Body
 from fastapi.responses import JSONResponse
 from requests import RequestException
 from docker import errors
-
+from typing import Any
 from helpers import remove_servers
 from globals import *
 
@@ -12,9 +12,8 @@ router = APIRouter()
 
 
 @app.delete("/rm")
-async def rm_servers(request: Request):
+def rm_servers(req: Any=Body(...)):
     try:
-        req = await request.json()
         n = req["n"]
         servers = req["servers"]
 

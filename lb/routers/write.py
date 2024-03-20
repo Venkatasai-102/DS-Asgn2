@@ -1,19 +1,20 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request,Body
 from fastapi.responses import JSONResponse
 import requests
 from requests import RequestException
-
+from typing import Any
 from globals import *
-
+import threading
 router = APIRouter()
 
 
 
 @app.post("/write")
-async def write(request: Request):
+def write(req: Any=Body(...)):
     # need to map shard to server
+    #print thread id  
+    print(f"Thread id: {threading.get_ident()}")
     try:
-        req = await request.json()
         students = req["data"]
         print(students)
 
@@ -21,7 +22,6 @@ async def write(request: Request):
         mysql_cursor.execute(GET_SHARDS_QUERY)
         rows = mysql_cursor.fetchall()
         shards = {row[1]: {"students":[],"attr":list(row),"server":[]} for row in rows}
-        
         mysql_cursor.execute("SELECT * FROM MapT")
         MapT_rows =mysql_cursor.fetchall()
         

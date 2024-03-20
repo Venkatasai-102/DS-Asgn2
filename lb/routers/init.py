@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request,Body
 from fastapi.responses import JSONResponse
 import time
 from consistent_hashing import ConsistentHashing
 import requests
 from random import randint
-
+from typing import Any
 from helpers import create_server
 from globals import *
 
@@ -12,7 +12,7 @@ router = APIRouter()
  
 
 @app.post("/init")
-async def init_system(request: Request):
+def init_system(req: Any=Body(...)):
 #     "N":3
 #  "schema":{"columns":["Stud_id","Stud_name","Stud_marks"],
 #  "dtypes":["Number","String","String"]}
@@ -22,7 +22,6 @@ async def init_system(request: Request):
 #  "servers":{"Server0":["sh1","sh2"],
 #  "Server1":["sh2","sh3"],
 
-    req = await request.json()
     n, schema = req['N'], req['schema']
     shards, servers = req['shards'], req['servers']
     print(servers)

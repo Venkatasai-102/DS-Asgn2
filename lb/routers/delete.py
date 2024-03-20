@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request, HTTPException
-
+from fastapi import APIRouter, Request, HTTPException,Body
+from typing import Any
 import requests
 
 from globals import *
@@ -8,9 +8,8 @@ router = APIRouter()
 
 
 @app.delete("/del")
-async def delete_entry(request: Request):
+def delete_entry(req: Any = Body(...)):
     try:
-        req = await request.json()
         Stud_id = req["Stud_id"]
 
         # get the shard corresponding to the stud_id 

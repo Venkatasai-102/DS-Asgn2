@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException,Body
 import requests 
-
+from typing import Any
 from globals import *
 
 router = APIRouter()
@@ -9,8 +9,7 @@ router = APIRouter()
 
 
 @app.put("/update")
-async def update_shard(request: Request):
-    req = await request.json()
+async def update_shard(req: Any = Body(...)):
     Stud_id = req["Stud_id"]
     Student = req["data"]
 

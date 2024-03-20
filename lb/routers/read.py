@@ -1,16 +1,17 @@
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request,Body
 from fastapi.responses import JSONResponse
 import requests
 from random import randint
-
+from typing import Any
+import threading
 from globals import *
 
 router = APIRouter()
 
 @app.post("/read")
-async def read_data(request: Request):
-    req = await request.json()
+def read_data(req: Any = Body(...)):
+    print(f"Thread id: {threading.get_ident()}")
     stud_low = req["Stud_id"]["low"]
     stud_high = req["Stud_id"]["high"]
 
