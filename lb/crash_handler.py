@@ -1,8 +1,7 @@
 from time import sleep
 import requests
 from requests.adapters import HTTPAdapter, Retry
-
-from globals import app
+from globals import app,get_db,close_db,acquire_write,release_write
 from helpers import create_server
 import sqlite3
 import requests
@@ -33,7 +32,7 @@ def is_alive(server):
 
 
 
-def respawn_dead_server(dead_server):
+def respawn_dead_server(dead_server,conn,cursor):
     
     new_server = f"new_{dead_server}"
     
@@ -70,16 +69,13 @@ def respawn_dead_server(dead_server):
     print(f"New server {new_server} is created with IP {ipaddr}!")
     
     print(f"Copying shard data from other servers ....... ", end=" ")
-    print(shards,flush=True)
+    print(shards)
     for sh in shards:
         # changing the hash info
-        print(f".....Restoring {sh} ", flush=True)
+        print(f".....Restoring {sh} ")
         app.hash_dict[sh].remove_server(index)
         app.hash_dict[sh].add_server(index, ipaddr, 8000)
-        
 
-        conn = sqlite3.connect('example.db')
-        cursor = conn.cursor()
         # Remove the shard - old server mapping from database       #TODO
         cursor.execute("DELETE FROM MapT WHERE Server_id=? AND Shard_id=?",(dead_server,sh))
         conn.commit()
@@ -98,29 +94,29 @@ def respawn_dead_server(dead_server):
                 students = resp.json()[sh]
                 break
             except requests.RequestException as e:
-                print(f"Request to {server_id} failed",flush=True)
-                print("Trying with another server",flush=True)
+                print(f"Request to {server_id} failed")
+                print("Trying with another server")
 
-            print("<::::::::::::::::::::::>")
-            print(students)
-            print("<::::::::::::::::::::::::::::::::::::>")
+        print("=== Student List ===")
+        print(students)
+        print("====================")
+
             # copy the shard data to the newly spawned server 
         requests.post(f"http://{ipaddr}:8000/write",json={
             "shard":sh,
             "curr_idx": 0, 
             "data": students
         },timeout=15)
-        print(f"Successfully copied shard:{sh} data from ", server_id," to ", new_server, flush=True) 
+        print(f"Successfully copied shard:{sh} data from ", server_id," to ", new_server) 
         # add the shard - new server mapping to database
         cursor.execute("INSERT INTO MapT VALUES(?,?)",(sh,new_server))
         conn.commit()
-        print(f"Successfully inserted shard:{sh} to server:{new_server} mapping into MapT", flush=True )
-        # Cleanup resources
-        cursor.close()
-        conn.close()
+        print(f"Successfully inserted shard:{sh} to server:{new_server} mapping into MapT" )
+        
+        # clean up down by check_server_health
 
 
-    print("Done!", flush=True)
+    print("Done!")
     
     
     
@@ -130,13 +126,27 @@ def respawn_dead_server(dead_server):
 
 def check_server_health():
     while 1:
-        # Lock server_list
-        server_names = list(app.server_list.keys())
-        for server in server_names:
-            if not is_alive(server):
-                print(app.server_list)
-                respawn_dead_server(server)
-        # Unlock server_list
+        try:
+
+            # acquire write lock
+            acquire_write()
+            print("Checking server health ....")
+            server_names = list(app.server_list.keys())
+            print("Server names: ")
+            print(server_names) 
+            conn,cursor = get_db()
+            for server in server_names:
+                if not is_alive(server):
+                    print(app.server_list)
+                    respawn_dead_server(server,conn,cursor)
+
+        except Exception as e:
+            print(f"Error: {e}")
+
+        finally:
+            close_db(conn,cursor)
+            print("finished checking server health")
+            release_write()  # release write lock
         
         sleep(10)
             
