@@ -6,12 +6,14 @@ from globals import *
 
 router = APIRouter()
 
-
+# reader  - <metadb>
 @app.delete("/del")
 def delete_entry(req: Any = Body(...)):
     try:
-        Stud_id = req["Stud_id"]
+        acquire_read()
+        mysql_conn,mysql_cursor = get_db()
 
+        Stud_id = req["Stud_id"]
         # get the shard corresponding to the stud_id 
         mysql_cursor.execute("SELECT DISTINCT Shard_id FROM ShardT  WHERE Stud_id_low <= ? AND Stud_id_low + Shard_size > ?",(Stud_id,Stud_id))
         result = mysql_cursor.fetchone()
@@ -47,4 +49,6 @@ def delete_entry(req: Any = Body(...)):
             
     except Exception as e:
         raise HTTPException(status_code=500,detail="Internal error1")
-   
+    finally:
+        close_db(mysql_conn,mysql_cursor)
+        release_read()

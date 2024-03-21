@@ -7,12 +7,15 @@ router = APIRouter()
 
 
 
-
+# reader - <metadb>
 @app.put("/update")
 async def update_shard(req: Any = Body(...)):
+ try:
+    acquire_read()
+    mysql_conn,mysql_cursor = get_db()
+
     Stud_id = req["Stud_id"]
     Student = req["data"]
-
     mysql_cursor.execute("SELECT DISTINCT Shard_id FROM ShardT  WHERE Stud_id_low <= ? AND Stud_id_low + Shard_size > ?",(Stud_id,Stud_id))
     result = mysql_cursor.fetchone()
     print(result)
@@ -37,7 +40,6 @@ async def update_shard(req: Any = Body(...)):
                 
                 if not result.ok:
                     raise HTTPException(status_code=500,detail="Internal error")
-            
             return {
                 "message": f"Data entry for Stud_id:{Stud_id} updated",
                 "status" : "success"
@@ -48,4 +50,8 @@ async def update_shard(req: Any = Body(...)):
                 "message" : "No server found",
                 "status"  : "failure"
             }
-    
+ except Exception as e:
+    return "some error"
+ finally: 
+    close_db(mysql_conn,mysql_cursor)
+    release_read()
