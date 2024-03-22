@@ -7,6 +7,8 @@ import sqlite3
 import requests
 
 
+CHECK_INTERVAL = 60 # 1 minute
+
 def is_alive(server):
     print(f"Checking health of {server} ........")
     try:
@@ -148,7 +150,7 @@ def check_server_health():
             print("finished checking server health")
             release_write()  # release write lock
         
-        sleep(10)
+        sleep(CHECK_INTERVAL)
             
             
             
