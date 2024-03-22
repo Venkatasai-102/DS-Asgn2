@@ -34,11 +34,11 @@ def init_system(req: Any=Body(...)):
         print(servers)
         app.schema = schema
 
-        if n != len(shards) or n != len(servers):
+        if n != len(servers):
             return JSONResponse(
                 status_code=400,
                 content={
-                    "message": f"value of N and number of shards/servers don't match!",
+                    "message": f"value of N and number of servers don't match!",
                     "status": "failure"
                 }
             )
