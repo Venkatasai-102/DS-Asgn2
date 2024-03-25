@@ -71,3 +71,7 @@ Remove all containers
 ```bash
   sudo make clean
 ```
+
+## Analysis
+
+1. Launching 10,000 write requests yielded in time of 
