@@ -7,10 +7,10 @@ import sqlite3
 import requests
 
 
-CHECK_INTERVAL = 60 # 1 minute
+CHECK_INTERVAL = 10 # 1 minute
 
 def is_alive(server):
-    print(f"Checking health of {server} ........")
+    print(f"Checking health of {server} ........",flush=True)
     try:
         request_url = f"http://{app.server_list[server]['ip']}:{8000}/heartbeat"
         
@@ -24,11 +24,11 @@ def is_alive(server):
         response = req_session.get(request_url, timeout=0.5)
 
         
-        print(f'<+> Server {server} is alive')
+        print(f'<+> Server {server} is alive',flush=True)
             
         return True
     except requests.RequestException as e:
-        print(f'<!> Server {server} is dead; Error: {e}')
+        print(f'<!> Server {server} is dead; Error: {e}',flush=True)
         
         return False
 
@@ -38,7 +38,7 @@ def respawn_dead_server(dead_server,conn,cursor):
     
     new_server = f"new_{dead_server}"
     
-    print(f"Respawning {dead_server} as {new_server} ......")
+    print(f"Respawning {dead_server} as {new_server} ......",flush=True)
     
     old_server_data = app.server_list.pop(dead_server)
     
@@ -68,13 +68,13 @@ def respawn_dead_server(dead_server,conn,cursor):
     }
     
     
-    print(f"New server {new_server} is created with IP {ipaddr}!")
+    print(f"New server {new_server} is created with IP {ipaddr}!",flush=True)
     
-    print(f"Copying shard data from other servers ....... ", end=" ")
-    print(shards)
+    print(f"Copying shard data from other servers ....... ", end=" ",flush=True)
+    print(shards,flush=True)
     for sh in shards:
         # changing the hash info
-        print(f".....Restoring {sh} ")
+        print(f".....Restoring {sh} ",flush=True)
         app.hash_dict[sh].remove_server(index)
         app.hash_dict[sh].add_server(index, ipaddr, 8000)
 
@@ -96,12 +96,12 @@ def respawn_dead_server(dead_server,conn,cursor):
                 students = resp.json()[sh]
                 break
             except requests.RequestException as e:
-                print(f"Request to {server_id} failed")
-                print("Trying with another server")
+                print(f"Request to {server_id} failed",flush=True)
+                print("Trying with another server",flush=True)
 
-        print("=== Student List ===")
-        print(students)
-        print("====================")
+        print("=== Student List ===",flush=True)
+        print(students,flush=True)
+        print("====================",flush=True)
 
             # copy the shard data to the newly spawned server 
         requests.post(f"http://{ipaddr}:8000/write",json={
@@ -109,16 +109,16 @@ def respawn_dead_server(dead_server,conn,cursor):
             "curr_idx": 0, 
             "data": students
         },timeout=15)
-        print(f"Successfully copied shard:{sh} data from ", server_id," to ", new_server) 
+        print(f"Successfully copied shard:{sh} data from ", server_id," to ", new_server,flush=True) 
         # add the shard - new server mapping to database
         cursor.execute("INSERT INTO MapT VALUES(?,?)",(sh,new_server))
         conn.commit()
-        print(f"Successfully inserted shard:{sh} to server:{new_server} mapping into MapT" )
+        print(f"Successfully inserted shard:{sh} to server:{new_server} mapping into MapT",flush=True )
         
         # clean up down by check_server_health
 
 
-    print("Done!")
+    print("Done!",flush=True)
     
     
     
@@ -132,9 +132,9 @@ def check_server_health():
 
             # acquire write lock
             acquire_write()
-            print("Checking server health ....")
+            print("Checking server health ....",flush=True)
             server_names = list(app.server_list.keys())
-            print("Server names: ")
+            print("Server names: ",flush=True)
             print(server_names) 
             conn,cursor = get_db()
             for server in server_names:
@@ -143,11 +143,11 @@ def check_server_health():
                     respawn_dead_server(server,conn,cursor)
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error: {e}",flush=True)
 
         finally:
             close_db(conn,cursor)
-            print("finished checking server health")
+            print("finished checking server health",flush=True)
             release_write()  # release write lock
         
         sleep(CHECK_INTERVAL)
