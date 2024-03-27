@@ -81,3 +81,14 @@ Remove all containers
 3. After increasing the number of servers to 10 and increasing the number of shards to 6 and replicas to 8, the time taken for 10,000 write requests is `836.38 seconds` and time taken for 10,000 read requests is `120.50 seconds`
 
 4. All the endpoints are tested and everything is working perfectly fine. After dropping a server container the load balancer is successfully spawns a new container and copies the shard entries present in other replicas.
+
+## Design Choices
+1. Created 3 dictionaries in the local environment, (i) for storing the server-name and its information, (ii) another for mapping the shard and its corresponding consistent hashing object, and (iii) finally one for having lock for each shard.
+2. Implemented reader-first solution for the reader-writer problem to encounter the read and write requests to handle the locks.
+3. The variable READER_COUNT is a global variable which is used to track the number of active readers and this is used to decide when to release the write lock for the writer to write.
+4. There are 3 types of locks, (i) read lock, (ii) write lock, (iii) lock for each shard
+5. Used the sqlite database for both loadbalancer and server.
+6. There is periodic chekcing of server health for every 10 seconds which runs in a separate thread.
+7. In the reader-writer problem here,
+   a. Readers: /del, /write, /read, /status, /update
+   b. Writers: /init, /add, /rm, server_health_check
