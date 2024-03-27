@@ -46,6 +46,9 @@ def write(req: Any=Body(...)):
         data_written = []
         for shard_id in shards:
             # acquire the lock for this shard
+            if shards[shard_id]['students'] == []:
+                continue
+            
             with app.locks[shard_id]:
                 queries = [{"Stud_id":stud[0],"Stud_name":stud[1],"Stud_marks":stud[2]} for stud in shards[shard_id]["students"]]
                 data= { "shard":shard_id,"curr_idx":shards[shard_id]["attr"][3] ,"data":queries}
