@@ -74,10 +74,10 @@ Remove all containers
 
 ## Analysis
 
-1. In the default configuration, time taken for 10,000 write requests is `559.99 seconds` and time taken for 10,000 read requests is `75.85 seconds`.
+1. In the default configuration, time taken for 10,000 write requests is `288.67 seconds` and time taken for 10,000 read requests is `114.99 seconds`.
 
-2. After increasing the number of shard replicas to 7, the time taken for 10,000 write requests is `1414.35 seconds` and time taken for 10,000 read requests is `64.96 seconds`.
+2. After increasing the number of shard replicas to 7, the time taken for 10,000 write requests is `282.67 seconds` and time taken for 10,000 read requests is `123.69 seconds`.
 
-3. After increasing the number of servers to 10 and increasing the number of shards to 6 and replicas to 8, the time taken for 10,000 write requests is `3200 seconds` and time taken for 10,000 read requests is `75.85 seconds`
+3. After increasing the number of servers to 10 and increasing the number of shards to 6 and replicas to 8, the time taken for 10,000 write requests is `836.38 seconds` and time taken for 10,000 read requests is `120.50 seconds`
 
 4. All the endpoints are tested and everything is working perfectly fine. After dropping a server container the load balancer is successfully spawns a new container and copies the shard entries present in other replicas.
